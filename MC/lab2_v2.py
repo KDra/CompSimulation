@@ -29,7 +29,7 @@ L = (N/rho)**(1/3.) # Box size
 rc = L/2            # Cutoff radius
 T = 2
 
-
+@jit
 def pbcDiff(xArray, i, j, boxSize, rcut):
     diff = xArray[j, :] - xArray[i, :]
     for n in range(dim):
@@ -147,14 +147,15 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
             pos = temp_pos
             acc += 1
             print "Iteration number %d, energy is %d" %(i, U[-1])
-    return U, acc
+    p = pressure(pos, mDist, rho, boxSize, cRatio) + ptail
+    return U, p, acc
     
     
 
-def mc_pressure(N, dim, rho, no_smples, cRatio):
-    pass
+def pressure(xArray, mDist, rho, boxSize, cRatio):
+    
 
-a, b = mc_LJ(N, dim, rho, T, no_smples, 2.)
+#a, b = mc_LJ(N, dim, rho, T, no_smples, 2.)
 
 
 
