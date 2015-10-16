@@ -20,8 +20,8 @@ def test_distances(f):
     assert np.linalg.norm(f(np.random.rand(10, 2)*100, 2)) == 0.
     return "Success"
 
-no_smples = 1000   # Number of samples
-N = 100             # No of particles
+no_smples = 10000   # Number of samples
+N = 50              # No of particles
 dim = 3             # No of dimensions
 a = 1               # Constant for density calculations
 rho = a/10.         # Density
@@ -43,7 +43,7 @@ def pbcDiff(xArray, i, j, boxSize, rcut):
         return np.inf
 
 
-
+@jit
 def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     """
     Returns an N*N array of the distances between all particles in xArray.
