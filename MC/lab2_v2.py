@@ -20,10 +20,10 @@ def test_distances(f):
     assert np.linalg.norm(f(np.random.rand(10, 2)*100, 2)) == 0.
     return "Success"
 
-no_smples = 10000   # Number of samples
+no_smples = 1000   # Number of samples
 N = 100             # No of particles
-dim = 2             # No of dimensions
-a = 2               # Constant for density calculations
+dim = 3             # No of dimensions
+a = 1               # Constant for density calculations
 rho = a/10.         # Density
 L = (N/rho)**(1/3.) # Box size
 rc = L/2            # Cutoff radius
@@ -37,9 +37,8 @@ def pbcDiff(xArray, i, j, boxSize, rcut):
             diff[n] -= boxSize
         elif diff[n] < -rcut:
             diff[n] += boxSize
-    dist = np.linalg.norm(diff)
-    if dist < rcut:
-        return dist
+    if np.linalg.norm(diff) < rcut:
+        return diff
     else:
         return np.inf
 
@@ -74,16 +73,19 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     if not mDist is None:
         assert rd!=None, "Please also input the modified particle index"
         for i in np.arange(rd):
-            mDist[i, rd] = pbcDiff(xArray, i, rd, boxSize, rcut)
+            mDist[i, rd] = np.linalg.norm(
+                pbcDiff(xArray, i, rd, boxSize, rcut))
         for i in np.arange(rd+1, N):
-            mDist[rd, i] = pbcDiff(xArray, rd, i, boxSize, rcut)
+            mDist[rd, i] = np.linalg.norm(
+                pbcDiff(xArray, rd, i, boxSize, rcut))
     else:
         mDist = np.zeros([N, N])    # Initialise distance matrix
         mDist[:] = np.inf   # Set all values to infty to aid in energy calculations
         # Compute distance from each point to all others
         for i in np.arange(N):
             for j in np.arange(i+1, N):
-                mDist[i, j] = pbcDiff(xArray, i, j, boxSize, rcut)
+                mDist[i, j] = np.linalg.norm(
+                    pbcDiff(xArray, i, j, boxSize, rcut))
     return mDist
 
 @jit
@@ -153,9 +155,19 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
     
 
 def pressure(xArray, mDist, rho, boxSize, cRatio):
-    
+    N, dim = np.shape(xArray)
+    rcut = boxSize * cRatio
+    f = open('my.dat', 'w')
+    p = 0
+    for i in np.arange(N):
+        for j in np.arange(i+1, N):
+            diff = pbcDiff(xArray, i, j, boxSize, rcut)
+            p += 24 * np.dot(diff, diff) * (2 * mDist[i, j]**(-14)\
+                - mDist[i, j]**(-8))
+            f.write(str(p)+"\n")
+    return p
 
-#a, b = mc_LJ(N, dim, rho, T, no_smples, 2.)
+a, b, c = mc_LJ(N, dim, rho, T, no_smples, 2.)
 
 
 
