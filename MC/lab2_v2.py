@@ -21,13 +21,13 @@ def test_distances(f):
     return "Success"
 
 no_smples = 10000   # Number of samples
-N = 50              # No of particles
+N = 100             # No of particles
 dim = 3             # No of dimensions
 a = 1               # Constant for density calculations
 rho = a/10.         # Density
 L = (N/rho)**(1/3.) # Box size
-rc = L/2            # Cutoff radius
-T = 2
+rc = L/2.            # Cutoff radius
+T = 2.
 
 @jit
 def pbcDiff(xArray, i, j, boxSize, rcut):
@@ -88,8 +88,8 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
                     pbcDiff(xArray, i, j, boxSize, rcut))
     return mDist
 
-@jit
-def rnd_move(xArray, boxSize, cRatio=0.01):
+#@jit
+def rnd_move(xArray, boxSize, cRatio=0.1):
     """
     Returns the input array (xArray) with one element that has been randomly 
     moved within a box wih periodic boundaries of the distance given by boxSize
@@ -149,7 +149,7 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
             pos = temp_pos
             acc += 1
             print "Iteration number %d, energy is %d" %(i, U[-1])
-    p = pressure(pos, mDist, rho, boxSize, cRatio) + ptail
+    p = rho*T + pressure(pos, mDist, rho, boxSize, cRatio)/(float(N)/rho) + ptail
     return U, p, acc
     
     
@@ -165,6 +165,7 @@ def pressure(xArray, mDist, rho, boxSize, cRatio):
             p += 24 * np.dot(diff, diff) * (2 * mDist[i, j]**(-14)\
                 - mDist[i, j]**(-8))
             f.write(str(p)+"\n")
+    f.close()
     return p
 
 a, b, c = mc_LJ(N, dim, rho, T, no_smples, 2.)
