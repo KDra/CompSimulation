@@ -21,7 +21,7 @@ def test_distances(f):
     return "Success"
 
 no_smples = 10000   # Number of samples
-N = 50              # No of particles
+N = 100              # No of particles
 dim = 3             # No of dimensions
 a = 1               # Constant for density calculations
 rho = a/10.         # Density
@@ -33,11 +33,11 @@ T = 2
 def pbcDiff(xArray, i, j, boxSize, rcut):
     diff = xArray[j, :] - xArray[i, :]
     for n in range(dim):
-        if diff[n] > rcut:
+        if diff[n] > boxSize/2.:
             diff[n] -= boxSize
-        elif diff[n] < -rcut:
+        elif diff[n] < -boxSize/2.:
             diff[n] += boxSize
-    if np.linalg.norm(diff) < rcut:
+    if np.linalg.norm(diff) < 0.5*boxSize:
         return diff
     else:
         return np.inf
@@ -89,7 +89,7 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     return mDist
 
 @jit
-def rnd_move(xArray, boxSize, cRatio=0.01):
+def rnd_move(xArray, boxSize, cRatio=0.1):
     """
     Returns the input array (xArray) with one element that has been randomly 
     moved within a box wih periodic boundaries of the distance given by boxSize
@@ -111,7 +111,7 @@ def rnd_move(xArray, boxSize, cRatio=0.01):
     rd = int(np.random.rand()*N)    # Choose rand point and scale to N
     # Randomly move point in all dimensions with scaling
     for i in np.arange(dim):
-        xArray[rd, i] += (np.random.rand() - 0.5) * boxSize * cRatio
+        xArray[rd, i] += (np.random.rand() - 0.5) * cRatio # boxSize *
         # Ensure that the moved point lies within the given box size
         if xArray[rd, i] > boxSize/2.:
             xArray[rd, i] -= boxSize
@@ -132,7 +132,7 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
     """
     boxSize = (N/rho)**(1/3.)
     acc = 0
-    rc = boxSize * float(cRatio)
+    rc = boxSize * 0.5#float(cRatio)
     # Create a random set of N particles
     pos = (np.random.rand(N, dim) - .5) * boxSize
     mDist = distances(xArray=pos, boxSize=boxSize)
@@ -140,10 +140,10 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
     utail = 8 * constants.pi * rho/3. * (1/3. * rc**(-9) - rc**(-3))
     ptail = 16 * constants.pi * rho/3. * (2/3. * rc**(-9) - rc**(-3))
     for i in np.arange(no_smples):
-        u = np.sum(4 * (mDist**(-12) - mDist**(-6))) + utail
         temp_pos, rd = rnd_move(pos, boxSize)
-        temp_mDist = distances(pos, boxSize, mDist, rd)
-        if (u < U[-1]) or (np.exp((U[-1]-u)/T) > np.random.rand):
+        temp_mDist = distances(temp_pos, boxSize, mDist, rd)
+        u = np.sum(4 * (temp_mDist**(-12) - temp_mDist**(-6))) + utail
+        if (u < U[-1]) or (np.exp((U[-1]-u)/float(T)) > np.random.rand):
             U = np.append(U, u)
             mDist = temp_mDist
             pos = temp_pos
@@ -167,7 +167,7 @@ def pressure(xArray, mDist, rho, boxSize, cRatio):
             f.write(str(p)+"\n")
     return p
 
-a, b, c = mc_LJ(N, dim, rho, T, no_smples, 2.)
+a, b, c = mc_LJ(N, dim, rho, T, no_smples, .5)
 
 
 
