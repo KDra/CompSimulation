@@ -13,7 +13,8 @@ from mpl_toolkits.mplot3d.axes3d import Axes3D
 from matplotlib import rcParams
 rcParams['font.family'] = 'serif'
 rcParams['font.size'] = 16
-rcParams['figure.figsize'] = (12,6)
+rcParams['figure.figsize'] = (12, 6)
+
 
 def test_distances(f):
     assert np.linalg.norm(f(np.random.rand(10, 2), 2)) != 0.
@@ -21,13 +22,14 @@ def test_distances(f):
     return "Success"
 
 no_smples = 10000   # Number of samples
-N = 100              # No of particles
+N = 5              # No of particles
 dim = 3             # No of dimensions
 a = 1               # Constant for density calculations
 rho = a/10.         # Density
-L = (N/rho)**(1/3.) # Box size
-rc = L/2            # Cutoff radius
-T = 2
+L = (N/rho)**(1/3.)  # Box size
+rc = L/2.            # Cutoff radius
+T = 2.
+
 
 @jit
 def pbcDiff(xArray, i, j, boxSize, rcut):
@@ -50,9 +52,7 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     The returned array is upper triangular (U-T) to avoid redundancies and the
     'inf's in the U-T part show that the points are further apart than half the
     box size (assumed to be the cutoff distance).
-    
         10/10/2015  K. Drakopoulos (kd1e15@soton.ac.uk)
-    
     External variables:
         xArray      Contains array of point coordinates
         boxSize     The size of the domain containing the points
@@ -70,8 +70,9 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     # Short internal function to compute distances and return if smaller than
     # the cutoff radius
 
-    if not mDist is None:
-        assert rd!=None, "Please also input the modified particle index"
+    if mDist is not None:
+        assert(rd is not None,
+               "Please also input the modified particle index")
         for i in np.arange(rd):
             mDist[i, rd] = np.linalg.norm(
                 pbcDiff(xArray, i, rd, boxSize, rcut))
@@ -80,7 +81,7 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
                 pbcDiff(xArray, rd, i, boxSize, rcut))
     else:
         mDist = np.zeros([N, N])    # Initialise distance matrix
-        mDist[:] = np.inf   # Set all values to infty to aid in energy calculations
+        mDist[:] = np.inf           # Set to inf to aid in energy calculations
         # Compute distance from each point to all others
         for i in np.arange(N):
             for j in np.arange(i+1, N):
@@ -88,15 +89,14 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
                     pbcDiff(xArray, i, j, boxSize, rcut))
     return mDist
 
+
 @jit
 def rnd_move(xArray, boxSize, cRatio=0.1):
     """
-    Returns the input array (xArray) with one element that has been randomly 
+    Returns the input array (xArray) with one element that has been randomly
     moved within a box wih periodic boundaries of the distance given by boxSize
     and centred at 0. The boxSize and cRatio are used to scale the movement.
-    
         10/10/2015  K. Drakopoulos (kd1e15@soton.ac.uk)
-    
     External variables:
         xArray      Contains array of point coordinates
         boxSize     The size of the domain containing the points
@@ -106,12 +106,11 @@ def rnd_move(xArray, boxSize, cRatio=0.1):
         dim         Number of dimensions, i.e columns
         rd          A random index to choose a point in xArray
     """
-    
     N, dim = np.shape(xArray)       # Store input matrix dimensions
     rd = int(np.random.rand()*N)    # Choose rand point and scale to N
     # Randomly move point in all dimensions with scaling
     for i in np.arange(dim):
-        xArray[rd, i] += (np.random.rand() - 0.5) * cRatio # boxSize *
+        xArray[rd, i] += (np.random.rand() - 0.5) * cRatio  # boxSize *
         # Ensure that the moved point lies within the given box size
         if xArray[rd, i] > boxSize/2.:
             xArray[rd, i] -= boxSize
@@ -128,11 +127,10 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
         N           Number of points, i.e. rows
         dim         Number of dimensions, i.e columns
     Internal variables:
-        
     """
     boxSize = (N/rho)**(1/3.)
     acc = 0
-    rc = boxSize * 0.5#float(cRatio)
+    rc = boxSize * float(cRatio)
     # Create a random set of N particles
     pos = (np.random.rand(N, dim) - .5) * boxSize
     mDist = distances(xArray=pos, boxSize=boxSize)
@@ -148,11 +146,11 @@ def mc_LJ(N, dim, rho, T, no_smples, cRatio):
             mDist = temp_mDist
             pos = temp_pos
             acc += 1
-            print "Iteration number %d, energy is %d" %(i, U[-1])
-    p = pressure(pos, mDist, rho, boxSize, cRatio) + ptail
+            print "Iteration number %d, energy is %d" % (i, U[-1])
+    p = rho*T + pressure(pos, mDist, rho, boxSize, cRatio)\
+        / (float(N) / rho) + ptail
     return U, p, acc
-    
-    
+
 
 def pressure(xArray, mDist, rho, boxSize, cRatio):
     N, dim = np.shape(xArray)
@@ -162,9 +160,10 @@ def pressure(xArray, mDist, rho, boxSize, cRatio):
     for i in np.arange(N):
         for j in np.arange(i+1, N):
             diff = pbcDiff(xArray, i, j, boxSize, rcut)
-            p += 24 * np.dot(diff, diff) * (2 * mDist[i, j]**(-14)\
-                - mDist[i, j]**(-8))
+            p += 24 * np.dot(diff, diff) * (2 * mDist[i, j]**(-14) -
+                                            mDist[i, j]**(-8))
             f.write(str(p)+"\n")
+    f.close()
     return p
 
 a, b, c = mc_LJ(N, dim, rho, T, no_smples, .5)
