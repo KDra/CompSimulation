@@ -22,28 +22,33 @@ def test_distances(f):
     return "Success"
 
 no_smples = 10000   # Number of samples
-N = 100             # No of particles
+N = 50             # No of particles
 dim = 3             # No of dimensions
 a = 1               # Constant for density calculations
 rc = 0.5            # Cutoff radius
 T = 2.
 
 
-@jit
-def pbcDiff(xArray, i, j, boxSize, rcut):
+#@jit
+def pbcDiff(xArray, i, j, boxSize, cRatio):
     diff = xArray[j, :] - xArray[i, :]
+    adder = np.array([0, -boxSize, boxSize])
     for n in range(dim):
+        iter_ = np.argmin(np.abs([diff[n], diff[n] - boxSize, diff[n] + boxSize]))
+        diff[n] += adder[iter_] 
+        """
         if diff[n] > boxSize/2.:
             diff[n] -= boxSize
         elif diff[n] < -boxSize/2.:
             diff[n] += boxSize
-    if np.linalg.norm(diff) < 0.5*boxSize:
+        """
+    if np.linalg.norm(diff) < boxSize * float(cRatio):
         return diff
     else:
         return np.inf
 
 
-@jit
+#@jit
 def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     """
     Returns an N*N array of the distances between all particles in xArray.
@@ -64,7 +69,6 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
         dist        Distance between two points (norm)
     """
     N, dim = np.shape(xArray)   # Extraxt input matrix size
-    rcut = boxSize * float(cRatio)  # Store the cutoff distance
     # Short internal function to compute distances and return if smaller than
     # the cutoff radius
 
@@ -74,10 +78,10 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
         mDistOut = mDist.copy()
         for i in np.arange(rd):
             mDistOut[i, rd] = np.linalg.norm(
-                pbcDiff(xArray, i, rd, boxSize, rcut))
+                pbcDiff(xArray, i, rd, boxSize, cRatio))
         for i in np.arange(rd+1, N):
             mDistOut[rd, i] = np.linalg.norm(
-                pbcDiff(xArray, rd, i, boxSize, rcut))
+                pbcDiff(xArray, rd, i, boxSize, cRatio))
     else:
         mDistOut = np.zeros([N, N])    # Initialise distance matrix
         mDistOut[:] = np.inf           # Set to inf to aid in energy calculations
@@ -85,11 +89,11 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
         for i in np.arange(N):
             for j in np.arange(i+1, N):
                 mDistOut[i, j] = np.linalg.norm(
-                    pbcDiff(xArray, i, j, boxSize, rcut))
+                    pbcDiff(xArray, i, j, boxSize, cRatio))
     return mDistOut
 
-@jit
-def rnd_move(xArray, boxSize, cRatio=0.1):
+#@jit
+def rnd_move(xArray, boxSize, cRatio=0.01):
     """
     Returns the input array (xArray) with one element that has been randomly
     moved within a box wih periodic boundaries of the distance given by boxSize
@@ -108,8 +112,8 @@ def rnd_move(xArray, boxSize, cRatio=0.1):
     rd = int(np.random.rand()*N)    # Choose rand point and scale to N
     yArray = xArray.copy()
     # Randomly move point in all dimensions with scaling
+    yArray[rd, :] += (np.random.rand(dim) - 0.5) * cRatio * boxSize
     for i in np.arange(dim):
-        yArray[rd, i] += (np.random.rand() - 0.5) * cRatio * boxSize
         # Ensure that the moved point lies within the given box size
         if yArray[rd, i] > boxSize/2.:
             yArray[rd, i] -= boxSize
@@ -137,7 +141,7 @@ def mc_LJ(N, dim, a, T, no_smples, cRatio):
     mDist = distances(xArray=pos, boxSize=boxSize)
     U = np.array([np.inf])    # Store all accepted energy levels
     utail = 8 * constants.pi * rho/3. * (1/3. * rc**(-9) - rc**(-3))
-    ptail = 16 * constants.pi * rho/3. * (2/3. * rc**(-9) - rc**(-3))
+    ptail = 16 * constants.pi * (rho**2)/3. * (2/3. * rc**(-9) - rc**(-3))
     for i in np.arange(no_smples):
         temp_pos, rd = rnd_move(pos, boxSize)
         temp_mDist = distances(temp_pos, boxSize, mDist, rd)
@@ -148,7 +152,9 @@ def mc_LJ(N, dim, a, T, no_smples, cRatio):
             pos = temp_pos
             acc += 1
     p = rho*T + pressure(pos, mDist, rho, boxSize, cRatio)/(float(N) / rho) + ptail
-    print mDist
+    """print mDist
+    print p
+    plt.plot(U)"""
     q.put((pos, U, p, acc))
     return pos, U, p, acc
 
@@ -160,7 +166,7 @@ def pressure(xArray, mDist, rho, boxSize, cRatio):
     p = 0
     for i in np.arange(N):
         for j in np.arange(i+1, N):
-            diff = pbcDiff(xArray, i, j, boxSize, rcut)
+            diff = pbcDiff(xArray, i, j, boxSize, cRatio)
             inner = np.dot(diff, diff)
             if inner == np.inf:
                 inner = 0.
@@ -172,17 +178,23 @@ def pressure(xArray, mDist, rho, boxSize, cRatio):
     return p
 
 q = Queue()
-d={}
+#d={}
 """
 for i in range(1, 10):
     p = Process(target=mc_LJ, args=(N, dim, i, T, no_smples, rc))
     p.start()
 
+p = np.array([])
+acc = np.array([])
+U = np.array([])
 for i in range(1, 10):
     d["a{}".format(i)] = q.get()
-    
+
 for i in range(1, 10):
     print "Pressure for a = %d is %f" %(i, d["a{}".format(i)][2])
+    p = np.append(p, d["a{}".format(i)][2])
+    acc = np.append(acc, d["a{}".format(i)][3])
+    U = np.append(U, d["a{}".format(i)][1])
 
 p2 = Process(target=mc_LJ, args=(N, dim, 2, T, no_smples, rc))
 p3 = Process(target=mc_LJ, args=(N, dim, 3, T, no_smples, rc))
@@ -201,8 +213,7 @@ res3 = q.get()
 res4 = q.get()
 """
 #debug
-a, b, c, d = mc_LJ(5, dim, 1, T, no_smples, rc)
-
+a, b, c, d = mc_LJ(10, dim, 1, T, no_smples, rc)
 
 
 
