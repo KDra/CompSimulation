@@ -147,31 +147,33 @@ def mc_LJ(N, dim, a, T, no_smples, cRatio):
             mDist = temp_mDist
             pos = temp_pos
             acc += 1
-    p = rho*T + pressure(pos, mDist, rho, boxSize, cRatio)\
-        / (float(N) / rho) + ptail
+    p = rho*T + pressure(pos, mDist, rho, boxSize, cRatio)/(float(N) / rho) + ptail
+    print mDist
     q.put((pos, U, p, acc))
     return pos, U, p, acc
 
-@jit
+#@jit
 def pressure(xArray, mDist, rho, boxSize, cRatio):
     N, dim = np.shape(xArray)
     rcut = boxSize * cRatio
-    f = open('my.dat', 'w')
+    #f = open('my.dat', 'w')
     p = 0
     for i in np.arange(N):
         for j in np.arange(i+1, N):
             diff = pbcDiff(xArray, i, j, boxSize, rcut)
             inner = np.dot(diff, diff)
             if inner == np.inf:
-                inner = 0
+                inner = 0.
             p += 24 * inner * (2 * mDist[i, j]**(-14) -
                                             mDist[i, j]**(-8))
-            f.write(str(p)+"\n")
-    f.close()
+            print str(p) + "\t" + str(inner)
+            """f.write(str(p)+"\n")
+    f.close()"""
     return p
 
 q = Queue()
 d={}
+"""
 for i in range(1, 10):
     p = Process(target=mc_LJ, args=(N, dim, i, T, no_smples, rc))
     p.start()
@@ -180,8 +182,8 @@ for i in range(1, 10):
     d["a{}".format(i)] = q.get()
     
 for i in range(1, 10):
-    print d["a{}".format(i)]
-"""
+    print "Pressure for a = %d is %f" %(i, d["a{}".format(i)][2])
+
 p2 = Process(target=mc_LJ, args=(N, dim, 2, T, no_smples, rc))
 p3 = Process(target=mc_LJ, args=(N, dim, 3, T, no_smples, rc))
 p4 = Process(target=mc_LJ, args=(N, dim, 4, T, no_smples, rc))
@@ -198,7 +200,8 @@ res2 = q.get()
 res3 = q.get()
 res4 = q.get()
 """
-
+#debug
+a, b, c, d = mc_LJ(5, dim, 1, T, no_smples, rc)
 
 
 
