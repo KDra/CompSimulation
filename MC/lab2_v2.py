@@ -4,6 +4,9 @@ Created on Fri Oct  9 14:26:07 2015
 
 @author: kostas
 """
+
+from __future__ import division
+
 from multiprocessing import Process, Queue
 import numpy as np
 from numba import jit
@@ -21,10 +24,10 @@ def test_distances(f):
     assert np.linalg.norm(f(np.random.rand(10, 2)*100, 2)) == 0.
     return "Success"
 
-no_smples = 10000   # Number of samples
+no_smples = 5000   # Number of samples
 N = 50             # No of particles
 dim = 3             # No of dimensions
-a = 1               # Constant for density calculations
+a = 8               # Constant for density calculations
 rc = 0.5            # Cutoff radius
 T = 2.
 
@@ -93,7 +96,7 @@ def distances(xArray, boxSize, mDist=None, rd=None, cRatio=0.5):
     return mDistOut
 
 #@jit
-def rnd_move(xArray, boxSize, cRatio=0.01):
+def rnd_move(xArray, boxSize, cRatio=0.4):
     """
     Returns the input array (xArray) with one element that has been randomly
     moved within a box wih periodic boundaries of the distance given by boxSize
@@ -121,6 +124,42 @@ def rnd_move(xArray, boxSize, cRatio=0.01):
             yArray[rd, i] += boxSize
     return yArray, rd
 
+#@jit
+def updateU(mDist, mDist_old = None, rd_acc=None, rd=None, U=None):
+    if U is not None:
+        if U == np.inf:
+            U = 0
+        assert a is not None, "Please give the index of the moved particle"
+        assert mDist_old is not None, "Please give the old distance matrix"
+        distV_old = np.append(mDist_old[:, rd], mDist_old[rd, :])
+        distV = np.append(mDist[:, rd], mDist[rd, :])
+        U_new = U + np.sum(4 * (distV**(-12) - distV**(-6))) -\
+                        np.sum(4 * (distV_old**(-12) - distV_old**(-6)))
+    else:
+        U_new = np.sum(4 * (mDist**(-12) - mDist**(-6)))
+    return U_new
+        
+
+@jit
+def pressure(xArray, mDist, rho, boxSize, cRatio):
+    N, dim = np.shape(xArray)
+    rcut = boxSize * cRatio
+    #f = open('my.dat', 'w')
+    p = 0
+    for i in np.arange(N):
+        for j in np.arange(i+1, N):
+            diff = pbcDiff(xArray, i, j, boxSize, cRatio)
+            inner = np.dot(diff, diff)
+            if inner == np.inf:
+                inner = 0.
+            a_ = 8.0 * inner * (2 * mDist[i, j]**(-14) -
+                                            mDist[i, j]**(-8))
+            p += a_
+            #print str(a_) + "\t" + str(inner)
+            """f.write(str(p)+"\n")
+    f.close()"""
+    return p
+
 
 def mc_LJ(N, dim, a, T, no_smples, cRatio):
     """
@@ -131,6 +170,7 @@ def mc_LJ(N, dim, a, T, no_smples, cRatio):
         dim         Number of dimensions, i.e columns
     Internal variables:
     """
+    f = open('my.dat', 'w')
     rho = a/10.         # Density
     boxSize = (N/rho)**(1/3.)
     acc = 0
@@ -145,41 +185,32 @@ def mc_LJ(N, dim, a, T, no_smples, cRatio):
     for i in np.arange(no_smples):
         temp_pos, rd = rnd_move(pos, boxSize)
         temp_mDist = distances(temp_pos, boxSize, mDist, rd)
-        u = np.sum(4 * (temp_mDist**(-12) - temp_mDist**(-6))) + utail
+        u1 = np.sum(4 * (temp_mDist**(-12) - temp_mDist**(-6))) + utail
+        print u1
+        u = updateU(temp_mDist, mDist, rd=rd, U=U[-1])
+        print u
+        f.write(str(u1) + "\t+" + str(u) + "\n")
         if (u < U[-1]) or (np.exp((U[-1]-u)/float(T)) > np.random.rand()):
             U = np.append(U, u)
             mDist = temp_mDist
             pos = temp_pos
+            rd_acc = rd
             acc += 1
-    p = rho*T + pressure(pos, mDist, rho, boxSize, cRatio)/(float(N) / rho) + ptail
+    f.close()
+    pv = pressure(pos, mDist, rho, boxSize, cRatio)/(float(N) / rho)
+    p = rho*T + pv + ptail
+    #print "p is {}, tail is {}, bulk is {}, virial is {}".format(p, ptail, rho*T, pv)
     """print mDist
     print p
     plt.plot(U)"""
     q.put((pos, U, p, acc))
     return pos, U, p, acc
 
-#@jit
-def pressure(xArray, mDist, rho, boxSize, cRatio):
-    N, dim = np.shape(xArray)
-    rcut = boxSize * cRatio
-    #f = open('my.dat', 'w')
-    p = 0
-    for i in np.arange(N):
-        for j in np.arange(i+1, N):
-            diff = pbcDiff(xArray, i, j, boxSize, cRatio)
-            inner = np.dot(diff, diff)
-            if inner == np.inf:
-                inner = 0.
-            p += 24 * inner * (2 * mDist[i, j]**(-14) -
-                                            mDist[i, j]**(-8))
-            print str(p) + "\t" + str(inner)
-            """f.write(str(p)+"\n")
-    f.close()"""
-    return p
+
 
 q = Queue()
-#d={}
-"""
+"""d={}
+
 for i in range(1, 10):
     p = Process(target=mc_LJ, args=(N, dim, i, T, no_smples, rc))
     p.start()
@@ -213,7 +244,7 @@ res3 = q.get()
 res4 = q.get()
 """
 #debug
-a, b, c, d = mc_LJ(10, dim, 1, T, no_smples, rc)
+a1, b, c, d = mc_LJ(10, dim, a, T, no_smples, rc)
 
 
 
