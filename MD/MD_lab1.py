@@ -7,7 +7,7 @@ Created on Mon Oct 26 16:43:41 2015
 from __future__ import division
 
 import numpy as np
-from matplotlib import pyplot
+import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 from matplotlib import rcParams
 from numba import jit
@@ -34,12 +34,15 @@ def dLJ(pos, i, j, rc, boxSize):
 
 
 #@jit
-def accel(pos, acc, i, j, rc, boxSize):
-    dLJ_local = dLJ(pos, i, j, rc, boxSize)
-    pos_diff = pos[i, :] - pos[j, :]
-    acc_new = acc[:]
-    acc_new[i, :] += pos_diff * dLJ_local
-    acc_new[j, :] -= pos_diff * dLJ_local
+def accel(pos, rc, boxSize):
+    N = pos.shape[1]
+    acc_new = np.zeros_like(pos)
+    for i in np.arange(N):
+        for j in np.arange(i+1, N):
+            dLJ_local = dLJ(pos, i, j, rc, boxSize)
+            pos_diff = pos[i, :] - pos[j, :]
+            acc_new[i, :] += pos_diff * dLJ_local
+            acc_new[j, :] -= pos_diff * dLJ_local
     return acc_new
 
 
@@ -50,10 +53,8 @@ def vv(pos, vel, acc, dt, rc, boxSize):
     pos_new = pos + vel * dt + 0.5 * dt**2 * acc
     pos_new = part_reset(pos_new)
     vel_star = vel + 0.5 * dt * acc
-    for i in np.arange(N/2):
-        for j in np.arange(i+1, N):
-            acc_new = accel(pos_new, acc_new, i, j, rc, boxSize)
-    vel_new = vel_star + 0.5 * dt * acc
+    acc_new = accel(pos_new, rc, boxSize)
+    vel_new = vel_star + 0.5 * dt * acc_new
     return pos_new, vel_new, acc_new
 
 def part_reset(pos):
@@ -83,14 +84,14 @@ def sim(filename, boxSize, rc, dt, steps):
         cpos, cvel, cacc = vv(cpos, cvel, cacc, dt, rc, boxSize)
         all_pos[i, :, :] = cpos[:]
         T[i] = temperature(cvel, boxSize)
-        print "pos of first two are \n{}\n{}\n Temperature is {}\n".format(cpos[0,:], cpos[1, :], T[i])
+        #print "pos of first two are \n{}\n{}\n Temperature is {}\n".format(cpos[0,:], cpos[1, :], T[i])
     return all_pos, time, T
 
 
 filename = "./input.dat"
 boxSize = 6.1984
 dt = 0.032
-steps = 10
+steps = 100
 rc = 2.5
 pos, t, T = sim(filename, boxSize, rc, dt, steps)
 
