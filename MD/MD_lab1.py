@@ -16,8 +16,8 @@ rcParams['font.size'] = 16
 rcParams['figure.figsize'] = (12,6)
 
 
-@jit
-def dLJ(pos, i, j, rc):
+#@jit
+def dLJ(pos, i, j, rc, boxSize):
     diff = pos[i, :] - pos[j, :]
     # Contains three cases: closer as is, closer to the left, closer to the right
     cases = np.array([0, -0.5, 0.5])
@@ -26,16 +26,16 @@ def dLJ(pos, i, j, rc):
         # the periodic boundaries
         index = np.argmin(np.abs(diff[n] + cases))
         diff[n] += cases[index]
-    r = np.linalg.norm(diff)
+    r = np.linalg.norm(diff)*boxSize
     if r < rc:
         return 24 * (2 * r**(-14) - r**(-8))
     else:
         return 0.0
 
 
-@jit
-def accel(pos, acc, i, j, rc):
-    dLJ_local = dLJ(pos, i, j, rc)
+#@jit
+def accel(pos, acc, i, j, rc, boxSize):
+    dLJ_local = dLJ(pos, i, j, rc, boxSize)
     pos_diff = pos[i, :] - pos[j, :]
     acc_new = acc[:]
     acc_new[i, :] += pos_diff * dLJ_local
@@ -43,16 +43,16 @@ def accel(pos, acc, i, j, rc):
     return acc_new
 
 
-@jit
-def vv(pos, vel, acc, dt, rc):
+#@jit
+def vv(pos, vel, acc, dt, rc, boxSize):
     N, dim = np.shape(pos)
-    acc_new = acc[:]
+    acc_new = np.zeros_like(acc)
     pos_new = pos + vel * dt + 0.5 * dt**2 * acc
     pos_new = part_reset(pos_new)
     vel_star = vel + 0.5 * dt * acc
-    for i in np.arange(N):
+    for i in np.arange(N/2):
         for j in np.arange(i+1, N):
-            acc_new = accel(pos_new, acc_new, i, j, rc)
+            acc_new = accel(pos_new, acc_new, i, j, rc, boxSize)
     vel_new = vel_star + 0.5 * dt * acc
     return pos_new, vel_new, acc_new
 
@@ -80,9 +80,10 @@ def sim(filename, boxSize, rc, dt, steps):
     T = np.zeros_like(time)
     T[0] = temperature(cvel, boxSize)
     for i in np.arange(1, steps+1):
-        cpos, cvel, cacc = vv(cpos, cvel, cacc, dt, rc)
+        cpos, cvel, cacc = vv(cpos, cvel, cacc, dt, rc, boxSize)
         all_pos[i, :, :] = cpos[:]
         T[i] = temperature(cvel, boxSize)
+        print "pos of first two are \n{}\n{}\n Temperature is {}\n".format(cpos[0,:], cpos[1, :], T[i])
     return all_pos, time, T
 
 
