@@ -17,16 +17,15 @@ rcParams['figure.figsize'] = (12,6)
 
 
 #@jit
-def dLJ(pos, i, j, rc, boxSize):
-    diff = pos[i, :] - pos[j, :]
+def dLJ(pos_diff, rc, boxSize):
     # Contains three cases: closer as is, closer to the left, closer to the right
     cases = np.array([0, -0.5, 0.5])
-    for n in range(pos.shape[1]):
+    for n in range(len(pos_diff)):
         # Add to the directions of interest to see if particles are closer over
         # the periodic boundaries
-        index = np.argmin(np.abs(diff[n] + cases))
-        diff[n] += cases[index]
-    r = np.linalg.norm(diff)*boxSize
+        index = np.argmin(np.abs(pos_diff[n] + cases))
+        pos_diff[n] += cases[index]
+    r = np.linalg.norm(pos_diff)*boxSize
     if r < rc:
         return 24 * (2 * r**(-14) - r**(-8))
     else:
@@ -35,15 +34,15 @@ def dLJ(pos, i, j, rc, boxSize):
 
 #@jit
 def accel(pos, rc, boxSize):
-    N = pos.shape[1]
-    acc_new = np.zeros_like(pos)
+    N = pos.shape[0]
+    acc = np.zeros_like(pos)
     for i in np.arange(N):
         for j in np.arange(i+1, N):
-            dLJ_local = dLJ(pos, i, j, rc, boxSize)
             pos_diff = pos[i, :] - pos[j, :]
-            acc_new[i, :] += pos_diff * dLJ_local
-            acc_new[j, :] -= pos_diff * dLJ_local
-    return acc_new
+            dLJ_local = dLJ(pos_diff, rc, boxSize)
+            acc[i, :] += pos_diff * dLJ_local
+            acc[j, :] -= pos_diff * dLJ_local
+    return acc
 
 
 #@jit
@@ -57,16 +56,20 @@ def vv(pos, vel, acc, dt, rc, boxSize):
     vel_new = vel_star + 0.5 * dt * acc_new
     return pos_new, vel_new, acc_new
 
+#@jit
 def part_reset(pos):
+    #while np.any(pos > 0.5):
     pos[pos > 0.5] -= 1.0
+    #while np.any(pos < 0.5):
     pos[pos < -0.5] += 1.0
     return pos
 
+#@jit
 def temperature(vel, boxSize):
     N = vel.shape[0]
     energy = np.sum(np.einsum('ij,ji->i', vel, vel.T))
     return boxSize**2 * energy / float(3 * N)
-
+#@jit
 def sim(filename, boxSize, rc, dt, steps):
     pos_orig = np.loadtxt(filename, skiprows=1)
     cpos = pos_orig / float(boxSize) - 0.5
