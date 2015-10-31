@@ -7,6 +7,7 @@ Created on Mon Oct 26 16:43:41 2015
 from __future__ import division
 
 import numpy as np
+import scipy as sp
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 from matplotlib import rcParams
@@ -19,7 +20,7 @@ rcParams['figure.figsize'] = (12,6)
 #@jit
 def dLJ(pos_diff, rc, boxSize):
     # Contains three cases: closer as is, closer to the left, closer to the right
-    cases = np.array([0, -0.5, 0.5])
+    cases = np.array([0, -1, 1])
     for n in range(len(pos_diff)):
         # Add to the directions of interest to see if particles are closer over
         # the periodic boundaries
@@ -31,6 +32,12 @@ def dLJ(pos_diff, rc, boxSize):
     else:
         return 0.0
 
+def distances(pos):
+    N = pos.shape[0]
+    Mdist = np.zeros((N, N, 3))
+    for i in np.arange(N):
+        Mdist[i, (i+1):, :] = pos[i, :] - pos[(i+1):, :]
+    return Mdist
 
 #@jit
 def accel(pos, rc, boxSize):
@@ -73,7 +80,7 @@ def temperature(vel, boxSize):
 def sim(filename, boxSize, rc, dt, steps):
     pos_orig = np.loadtxt(filename, skiprows=1)
     cpos = pos_orig / float(boxSize) - 0.5
-    cpos -= np.mean(cpos, axis=0)
+    #cpos -= np.mean(cpos, axis=0)
     cpos = part_reset(cpos)
     all_pos = np.zeros((steps+1, cpos.shape[0], cpos.shape[1]))
     all_pos[0, :, :] = cpos
@@ -96,6 +103,6 @@ boxSize = 6.1984
 dt = 0.032
 steps = 100
 rc = 2.5
-pos, t, T = sim(filename, boxSize, rc, dt, steps)
+#pos, t, T = sim(filename, boxSize, rc, dt, steps)
 
-
+M = distances(pos_orig)
