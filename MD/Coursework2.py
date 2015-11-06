@@ -324,6 +324,7 @@ def inter(pos, ct):
     ene = 0
     n = np.shape(pos)[0]
     d = np.shape(pos)[1]
+    local_LJ = 0.0
     for i in np.arange(n*d):
         for j in np.arange((int(i/d) + 1) * d, n*d):
             ox = 0
@@ -337,38 +338,38 @@ def inter(pos, ct):
                 diff[k] += cases[index]
             r = np.linalg.norm(diff)
             #print r
-            if r < ct['rc']:
-                local_LJ = 0.0
-                if i%3 == 0:
-                    ei = ct['eO']
-                    ox += 1
-                else:
-                    ei = ct['eH']
-                if j%3 == 0:
-                    ej = ct['eO']
-                    ox += 1
-                else:
-                    ej = ct['eH']
-                if ox == 2:
-                    local_LJ = 4 * ct['eps'] * ((ct['sig']/r)**(12) - (ct['sig']/r)**(6))
-                ene += (-ei*ej/4/np.pi/r + local_LJ) / mass[i%3]
-        return ene
+            #if r < ct['rc']:
+            if i%3 == 0:
+                ei = ct['eO']
+                ox += 1
+            else:
+                ei = ct['eH']
+            if j%3 == 0:
+                ej = ct['eO']
+                ox += 1
+            else:
+                ej = ct['eH']
+            if ox == 2:
+                local_LJ = 4 * ct['eps'] * ((ct['sig']/r)**(12) - (ct['sig']/r)**(6))
+            ene += (-ei*ej/4/np.pi/r + local_LJ) / mass[i%3]
+    return ene
 
 
 #@jit
 def energy(xpos, ct):
-    pos = np.zeros((8,3,3))
-    pos[:, 0, :] = xpos.reshape(8,3)
-    pos[:, 1, :] = pos[:, 0, :] + np.array([0.8, 0.6, 0.0])
-    pos[:, 2, :] = pos[:, 0, :] + np.array([-0.8, 0.6, 0.0])
+    lpos = np.zeros((8,3,3))
+    lpos[:, 0, :] = xpos.reshape(8,3)
+    lpos[:, 1, :] = lpos[:, 0, :] + np.array([0.8, 0.6, 0.0])
+    lpos[:, 2, :] = lpos[:, 0, :] + np.array([-0.8, 0.6, 0.0])
     
     ene = 0
-    n = np.shape(pos)[0]
-    d = np.shape(pos)[1]
+    n = np.shape(lpos)[0]
+    d = np.shape(lpos)[1]
+    local_LJ = 0.0
     for i in np.arange(n*d):
         for j in np.arange((int(i/d) + 1) * d, n*d):
-            ox = 0
-            diff = pos[int(i/d), i%d, :] - pos[int(j/d), j%d, :]
+            ox = 0.0
+            diff = lpos[int(i/d), i%d, :] - lpos[int(j/d), j%d, :]
             # Contains three cases: closer as is, closer to the left, closer to the right
             cases = np.array([0, -ct['boxSize'], ct['boxSize']])
             for k in np.arange(len(diff)):
@@ -379,7 +380,6 @@ def energy(xpos, ct):
             r = np.linalg.norm(diff)
             #print r
             if r < ct['rc']:
-                local_LJ = 0.0
                 if i%3 == 0:
                     ei = ct['eO']
                     ox += 1
@@ -392,11 +392,13 @@ def energy(xpos, ct):
                     ej = ct['eH']
                 if ox == 2:
                     local_LJ = 4 * ct['eps'] * ((ct['sig']/r)**(12) - (ct['sig']/r)**(6))
-                ene += (-ei*ej/4/np.pi/r + local_LJ) / mass[i%3]
+                ene += (-ei*ej/4.0/np.pi/r + local_LJ)
     return ene
 
 
-allpos = pos.copy()
-mpos = allpos[:, 0, :]
-res = minimize(energy, pos[:, 0, :], args=(ct))
-
+res = minimize(energy, pos[:, 0, :], args=ct, tol=1e-6)
+print res.success
+optpos = np.zeros_like(pos)
+optpos[:,0,:] = np.array(res.x).reshape(8,3)
+optpos[:, 1, :] = optpos[:, 0, :] + np.array([0.8, 0.6, 0.0])
+optpos[:, 2, :] = optpos[:, 0, :] + np.array([-0.8, 0.6, 0.0])
