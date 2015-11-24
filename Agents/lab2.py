@@ -21,17 +21,17 @@ from scipy.optimize import minimize
 
 
 class Agent(object):
-    @jit
+    
     def __init__(self, location, velocity, C=1, A=5, S=0.1):
         self.loc = np.array(location)
         self.v = np.array(velocity)
         self.C = C
         self.A = A
         self.S = S
-    @jit
+    
     def step(self, dt): 
         self.loc += self.v*dt
-    @jit
+    
     def steer(self, neighbours):
         N = len(neighbours)
         if N == 0:
@@ -70,13 +70,13 @@ class Agent(object):
         self.v = np.array([v * cos(th_new), v * sin(th_new)])
 
 class Flock(object):
-    @jit
+    
     def __init__(self, locations, velocities, rl=1):
         self.rl = rl
         self.agents = []
         for loc, vel in zip(locations, velocities):
             self.agents.append(Agent(loc, vel))
-    @jit
+    
     def step(self, dt):
         for i, agent in enumerate(self.agents):
             index = np.logical_and(np.linalg.norm(self.locations(i) - np.array([agent.loc]).T,
@@ -84,7 +84,7 @@ class Flock(object):
             agent.steer(np.array(self.agents)[index])
         for agent in self.agents:
             agent.step(dt)
-    @jit
+    
     def locations(self, i=None):
         x = np.zeros(len(self.agents))
         y = x.copy()
@@ -92,20 +92,20 @@ class Flock(object):
             if not i == j:
                 x[j], y[j] = agent.loc
         return np.vstack((x, y))
-    @jit
+    
     def velocities(self):
         vx = np.zeros(len(self.agents))
         vy = vx.copy()
         for i, agent in enumerate(self.agents):
             vx[i], vy[i] = agent.v
         return np.vstack((vx, vy))
-    @jit
+    
     def average_location(self):
         return np.mean(self.locations(), axis=1)
-    @jit
+    
     def average_velocity(self):
         return np.mean(self.velocities(), axis=1)
-    @jit
+    
     def average_width(self):
         locs = self.locations()
         average_loc = self.average_location()
