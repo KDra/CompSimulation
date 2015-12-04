@@ -1,294 +1,13 @@
 
-# coding: utf-8
-
-# # Finite Elements Coursework
-
-# In[1]:
-
-from IPython.core.display import HTML
-css_file = 'https://raw.githubusercontent.com/ngcm/training-public/master/ipython_notebook_styles/ngcmstyle.css'
-HTML(url=css_file)
-
-
-# ## Problem setup
-
-# Consider a two dimensional solid body modelled by a linear, isotropic material (as in lab 2). We will use a model for concrete with Young's modulus $E = 40$GPa, Poisson's ratio $\nu = 0.15$, and density $2400$kg m${}^{-2}$ (obviously the density should really be per volume; here we factor out the $y$ direction, assuming everything is symmetric and $1$m long in that direction).
-
-# The body will be a stylized "N" shape: assuming the bottom left corner is at the origin of the coordinates, the body will be $3$m high and $4$m wide.
-
-# In[2]:
-
-get_ipython().magic('matplotlib inline')
 from matplotlib import pyplot
 import numpy as np
+from numba import jit
 from matplotlib import rcParams
 rcParams['font.family'] = 'serif'
 rcParams['font.size'] = 16
 rcParams['figure.figsize'] = (12, 6)
 
 
-# In[3]:
-
-corners = np.array([[0,0],[0,3],[1,3],[3,1],[3,3],[4,3],[4,0],[3,0],[1,2],[1,0],[0,0]])
-pyplot.plot(corners[:,0],corners[:,1],linewidth=2)
-pyplot.xlabel(r"$x$")
-pyplot.ylabel(r"$z$")
-pyplot.axis('equal')
-pyplot.ylim(-0.1,3.1);
-
-
-# Set the displacements along the $y=0$ boundary to be zero. All other boundaries are free. Write a finite element method using **triangular** elements to compute the displacement of the body satisfying the equation
-# 
-# $$
-#   \nabla \sigma + {\bf b} = {\bf 0}
-# $$
-# 
-# where the body force is given by gravity, ${\bf b} = (0, -m g)^T$ where $g = 9.8$m s${}^{-2}$ and $m$ is the mass of the block, $m = 12000$kg.
-
-# First use the obvious sixteen elements with triangles one metre to a side. Then split each element into two triangles that are half a metre to a side.
-
-# The standard triangle in $(\xi, \eta)$ coordinates is:
-
-# In[4]:
-
-corners = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
-pyplot.plot(corners[:,0],corners[:,1],linewidth=2)
-pyplot.xlabel(r"$\xi$")
-pyplot.ylabel(r"$\eta$")
-pyplot.axis('equal')
-pyplot.ylim(-0.1,1.1);
-
-
-# The shape functions for a triangle are
-# 
-# \begin{align}
-#   N_1(\xi, \eta) &= 1 - \eta - \xi, \\
-#   N_2(\xi, \eta) &= \eta, \\
-#   N_3(\xi, \eta) &= \xi.
-# \end{align}
-
-# In[5]:
-
-def shape_functions(coords):
-    """
-    Value of the shape functions at given parametric coordinates
-    
-    Parameters
-    ----------
-    
-    coords : vector of float
-        Parametric coordinates (xi, eta)
-    
-    Returns
-    -------
-    
-    N_i : vector of float
-        The four shape functions at this point
-        
-    Notes
-    -----
-    
-    It is **essential** that the order of the shape functions matches the order of the nodes in the element. 
-    That is, in parametric coordinates we have 
-    0 : bottom left
-    1 : bottom right
-    2 : top
-    """
-    N = np.zeros((3,))
-    N[0] = 1.0-coords[0] - coords[1]
-    N[1] = coords[0]
-    N[2] = coords[1]
-    
-    return N
-
-
-# In[6]:
-
-def deriv_shape_functions():
-    """
-    Value of the derivatives of the shape functions wrt parametric coordinates at given parametric coordinates
-    
-    Returns
-    -------
-    
-    d_N_i : array of float
-        The three shape functions derivatives wrt (xi, eta)
-    """
-    dN = np.zeros((2,3))
-    dN[0,0] = -1.0
-    dN[0,1] = 0.0
-    dN[0,2] = 1.0
-    dN[1,0] = -1.0
-    dN[1,1] = 1.0
-    dN[1,2] = 0.0
-    
-    return dN
-
-
-# The two-point Gauss quadrature formula within the standard triangular element is
-# 
-# \begin{equation}
-#   \int \text{d} \xi \, \text{d} \eta \, f(\eta, \xi) = \frac{1}{6} \left[ f \left( \frac{1}{6}, \frac{1}{6} \right) +  f \left( \frac{2}{3}, \frac{1}{6} \right) +  f \left( \frac{1}{6}, \frac{2}{3} \right) \right].
-# \end{equation}
-
-# In[7]:
-
-def Jacobian(node_coords):
-    """
-    Jacobian matrix at given parametric coordinates
-    
-    Parameters
-    ----------
-    
-    coords : vector of float
-        Parametric coordinates (xi, eta)
-    node_coords : array of float
-        Physical coordinates of the nodes defining this element
-    
-    Returns
-    -------
-    
-    J : array of float
-        The Jacobian (d{x,y} / d{xi,eta})
-    """
-    
-    dN = deriv_shape_functions()
-    J = np.dot(dN, node_coords)
-    return J
-
-
-# In[8]:
-
-def GaussTri_Volume(field, node_coords):
-    """
-    Use two point Gauss quadrature to evaluate the integral of a field over an element
-    
-    Parameters
-    ----------
-    
-    field : function
-        A way of evaluating the field variable at given parametric coordinates within the element.
-    node_coords : array of float
-        Physical coordinates of the nodes defining this element
-    
-    Returns
-    -------
-    
-    I : float
-        The integral over the element
-    """
-    
-    point1 = 1/float(6)
-    point2 = 2/float(3)
-    I = 0
-    I += np.linalg.det(Jacobian(node_coords))*field([point1, point1])
-    I += np.linalg.det(Jacobian(node_coords))*field([point2, point1])
-    I += np.linalg.det(Jacobian(node_coords))*field([point1, point2])
-    I /= 6.0
-    return I
-
-
-# In[9]:
-
-def Bmatrix(coords, node_coords):
-    """
-    Strain-displacement B matrix (dN/dx = J^{-1} dN/dxi) at given parametric coordinates
-    
-    Parameters
-    ----------
-    
-    coords : vector of float
-        Parametric coordinates (xi, eta)
-    node_coords : array of float
-        Physical coordinates of the nodes defining this element
-    
-    Returns
-    -------
-    
-    B : array of float
-        The Strain-displacement matrix 
-    """
-    
-    dN = deriv_shape_functions()
-    J = Jacobian(node_coords)
-    B = np.dot(np.linalg.inv(J), dN)
-    return B
-
-
-# In[10]:
-
-def KD(i,j):
-    """
-    Kronecker delta
-    """
-    
-    return int(i==j)
-
-
-# In[11]:
-
-def generate_constituitive_relation(E, nu):
-    """
-    Return function giving the consituitive relation C_{ijkl}
-    """
-    
-    lam = E * nu / (1.0 + nu) / (1.0 - 2.0 * nu)
-    mu = E / 2.0 / (1.0 + nu)
-    
-    C = lambda i, j, k, l: lam*KD(i,j)*KD(k,l) + mu*(KD(i,k)*KD(j,l)+KD(i,l)*KD(j,k))
-
-    return C
-
-
-# In[12]:
-
-def stiffness_integrand(A, B, j, l, C, node_coords):
-    """
-    Return function giving the integrand for the stiffness matrix calculation
-    """
-    
-    integrand = lambda coords :     C[0,j,0,l]*Bmatrix(coords, node_coords)[0,A]*Bmatrix(coords, node_coords)[0,B] +     C[1,j,0,l]*Bmatrix(coords, node_coords)[1,A]*Bmatrix(coords, node_coords)[0,B] +     C[0,j,1,l]*Bmatrix(coords, node_coords)[0,A]*Bmatrix(coords, node_coords)[1,B] +     C[1,j,1,l]*Bmatrix(coords, node_coords)[1,A]*Bmatrix(coords, node_coords)[1,B]
-    
-    return integrand
-
-
-# In[13]:
-
-def element_stiffness(node_coords, C):
-    """
-    Compute the element stiffness matrix for a given element defined by its node locations
-    """
-    
-    K = np.zeros((6, 6))
-    Ndims = 2
-    Nnodes = 3
-    for A in range(Nnodes):
-        for j in range(Ndims):
-            for B in range(Nnodes):
-                for l in range(Ndims):
-                    K[2*A+j, 2*B+l] = GaussTri_Volume(stiffness_integrand(A,B,j,l,C,node_coords), node_coords)
-    return K
-
-
-# In[14]:
-
-def force_integrand(A, j):
-    """
-    A hand-hack for a single element here.
-    """
-    
-    traction = [1.0e6, 0]
-    
-    integrand = lambda coords : traction[j]*shape_functions(coords)[A]
-    
-    return integrand
-
-
-# Plot the displacement vector at each node.
-
-# To save time setting up the mesh, here are hand-written lists of node positions and their links to elements. Also given is the list of fixed nodes (where the displacement vanishes).
-
-# In[15]:
 
 nodes_1m = np.array([
         [0.0, 0.0],
@@ -459,99 +178,287 @@ free_nodes_0_5m = np.array([3, 4, 5, 6, 7, 8, 9,
                                40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
                               50], dtype = np.int)
 
+# In[6]:
 
-# In[16]:
-
-fig=pyplot.figure()
-ax=fig.add_subplot(111)
-for e in IEN_1m:
-    coords = np.vstack((nodes_1m[e], nodes_1m[e[0]]))
-    ax.plot(coords[:,0], coords[:,1],'kx-')
-pyplot.xlim(-0.1,4.1)
-pyplot.ylim(-0.1,3.1)
-pyplot.xlabel(r"$x$")
-pyplot.ylabel(r"$y$")
-pyplot.show();
-
-
-# In[17]:
-
-fig=pyplot.figure()
-ax=fig.add_subplot(111)
-for e in IEN_0_5m:
-    coords = np.vstack((nodes_0_5m[e], nodes_0_5m[e[0]]))
-    ax.plot(coords[:,0], coords[:,1],'kx-')
-pyplot.xlim(-0.1,4.1)
-pyplot.ylim(-0.1,3.1)
-pyplot.xlabel(r"$x$")
-pyplot.ylabel(r"$y$")
-pyplot.show();
+def deriv_shape_functions():
+    """
+    Value of the derivatives of the shape functions wrt parametric coordinates at given parametric coordinates
+    
+    Returns
+    -------
+    
+    d_N_i : array of float
+        The three shape functions derivatives wrt (xi, eta)
+    """
+    dN = np.zeros((2,3))
+    dN[0,0] = -1.0
+    dN[0,1] = 0.0
+    dN[0,2] = 1.0
+    dN[1,0] = -1.0
+    dN[1,1] = 1.0
+    dN[1,2] = 0.0
+    
+    return dN
 
 
-# In[18]:
+# The two-point Gauss quadrature formula within the standard triangular element is
+# 
+# \begin{equation}
+#   \int \text{d} \xi \, \text{d} \eta \, f(\eta, \xi) = \frac{1}{6} \left[ f \left( \frac{1}{6}, \frac{1}{6} \right) +  f \left( \frac{2}{3}, \frac{1}{6} \right) +  f \left( \frac{1}{6}, \frac{2}{3} \right) \right].
+# \end{equation}
 
-nodes = nodes_1m
-IEN = IEN_1m
-Ndims = 2
-Nnodes = len(nodes)
+# In[7]:
+
+def Jacobian(node_coords):
+    """
+    Jacobian matrix at given parametric coordinates
+    
+    Parameters
+    ----------
+    
+    coords : vector of float
+        Parametric coordinates (xi, eta)
+    node_coords : array of float
+        Physical coordinates of the nodes defining this element
+    
+    Returns
+    -------
+    
+    J : array of float
+        The Jacobian (d{x,y} / d{xi,eta})
+    """
+    
+    dN = deriv_shape_functions()
+    J = np.dot(dN, node_coords)
+    return J
 
 
-# In[19]:
+# In[8]:
+@jit
+def GaussTri_Volume(field, node_coords):
+    """
+    Use two point Gauss quadrature to evaluate the integral of a field over an element
+    
+    Parameters
+    ----------
+    
+    field : function
+        A way of evaluating the field variable at given parametric coordinates within the element.
+    node_coords : array of float
+        Physical coordinates of the nodes defining this element
+    
+    Returns
+    -------
+    
+    I : float
+        The integral over the element
+    """
+    
+    point1 = 1/float(6)
+    point2 = 2/float(3)
+    I = 0
+    I += np.linalg.det(Jacobian(node_coords))*field([point1, point1])
+    I += np.linalg.det(Jacobian(node_coords))*field([point2, point1])
+    I += np.linalg.det(Jacobian(node_coords))*field([point1, point2])
+    I /= 6.0
+    return I
+
+
+# In[9]:
+
+def Bmatrix(node_coords):
+    """
+    Strain-displacement B matrix (dN/dx = J^{-1} dN/dxi) at given parametric coordinates
+    
+    Parameters
+    ----------
+    
+    coords : vector of float
+        Parametric coordinates (xi, eta)
+    node_coords : array of float
+        Physical coordinates of the nodes defining this element
+    
+    Returns
+    -------
+    
+    B : array of float
+        The Strain-displacement matrix 
+    """
+    
+    dN = deriv_shape_functions()
+    J = Jacobian(node_coords)
+    B = np.dot(np.linalg.inv(J), dN)
+    return B
+
+
+# In[10]:
+
+def KD(i,j):
+    """
+    Kronecker delta
+    """
+    
+    return int(i==j)
+
+
+# In[11]:
+
+def generate_constituitive_relation(E, nu):
+    """
+    Return function giving the consituitive relation C_{ijkl}
+    """
+    
+    lam = E * nu / (1.0 + nu) / (1.0 - 2.0 * nu)
+    mu = E / 2.0 / (1.0 + nu)
+    
+    C = lambda i, j, k, l: lam*KD(i,j)*KD(k,l) + mu*(KD(i,k)*KD(j,l)+KD(i,l)*KD(j,k))
+
+    return C
+
+
+# In[12]:
+
+def stiffness_integrand(A, B, j, l, C, node_coords):
+    """
+    Return function giving the integrand for the stiffness matrix calculation
+    """
+    
+    integrand = lambda coords :\
+        C[0,j,0,l]*Bmatrix(node_coords)[0,A]*Bmatrix(node_coords)[0,B] + \
+        C[1,j,0,l]*Bmatrix(node_coords)[1,A]*Bmatrix(node_coords)[0,B] + \
+        C[0,j,1,l]*Bmatrix(node_coords)[0,A]*Bmatrix(node_coords)[1,B] + \
+        C[1,j,1,l]*Bmatrix(node_coords)[1,A]*Bmatrix(node_coords)[1,B]
+    
+    return integrand
+
+
+# In[13]:
+
+@jit
+def element_stiffness(node_coords, C):
+    """
+    Compute the element stiffness matrix for a given element defined by its node locations
+    """
+    
+    K = np.zeros((6, 6))
+    Ndims = 2
+    Nnodes = 3
+    for A in range(Nnodes):
+        for j in range(Ndims):
+            for B in range(Nnodes):
+                for l in range(Ndims):
+                    K[2*A+j, 2*B+l] = GaussTri_Volume(stiffness_integrand(A,B,j,l,C,node_coords), node_coords)
+    return K
+
+
+# In[14]:
+
+def force_integrand(A, j):
+    """
+    A hand-hack for a single element here.
+    """
+    
+    traction = [1.0e6, 0]
+    
+    integrand = lambda coords : traction[j]*shape_functions(coords)[A]
+    
+    return integrand
+
+
+# In[15]:
+
+def global_stiffness(E, nu, nodes, IEN, fixN):
+    """
+    Returns the global stiffness matrix.
+    Inputs:
+        E       Young's Modulus (Pa)    [float/int]
+        nu      Poission's ratio        [float]
+        nodes   Node coordinates        [array of float]
+        IEN     Connected node indices  [array of int]
+        fixN    Fixed node indices      [array of int]
+    Output:
+        K       Global stiffness matrix [array of double]
+    """
+    assert type(E) == (float or int),\
+        "Youngs Modulus should be an integer or a float"
+    assert type(nu) == float,\
+        "Poisson's ratio should be a float"
+    assert (type(nodes) == np.ndarray) or (type(IEN) == np.ndarray)\
+        or (type(fixN) == np.ndarray),\
+            "All input arrays must be numpy arrays"
+    
+    Nnodes, Ndims = np.shape(nodes)
+    C = np.zeros((Ndims,Ndims,Ndims,Ndims))
+    Cfn = generate_constituitive_relation(E, nu)
+    for i in range(Ndims):
+        for j in range(Ndims):
+            for k in range(Ndims):
+                for l in range(Ndims):
+                    C[i,j,k,l] = Cfn(i,j,k,l)
+    # Compute stiffness matrix
+    K = np.zeros((2*Nnodes, 2*Nnodes))
+    indices = np.zeros((6,6))
+    for i in IEN:
+        K_local = element_stiffness(nodes[i], C)
+        indices[:] = np.append(2*i, 2*i + 1)
+        indices = indices.astype(np.int, copy=False)
+        K[indices, indices.T] += K_local
+    # Set rows and columns to zero for the fixed nodes
+    K[2*fixN, :] = 0.0
+    K[2*fixN + 1, :] = 0.0
+    K[:, 2*fixN] = 0.0
+    K[:, 2*fixN + 1] = 0.0
+    # Set the diagonal elements of fixed nodes to one.
+    K[2*fixN, 2*fixN] = 1.0
+    K[2*fixN + 1, 2*fixN + 1] = 1.0
+    return K
+
+
 
 E = 4e10
 nu = 0.15
-C = np.zeros((Ndims,Ndims,Ndims,Ndims))
-Cfn = generate_constituitive_relation(E, nu)
-for i in range(Ndims):
-    for j in range(Ndims):
-        for k in range(Ndims):
-            for l in range(Ndims):
-                C[i,j,k,l] = Cfn(i,j,k,l)
-
-
-# In[20]:
-
-K = np.zeros((2*len(nodes), 2*len(nodes)))
-for i in IEN:
-    Ke = element_stiffness(nodes[i], C)
-    vector = np.array([2*i[0], 2*i[0] + 1, 2*i[1], 2*i[1] + 1, 2*i[2], 2*i[2] + 1])
-    nodes2 = np.outer(np.ones((6,1), dtype=np.int), vector)
-    K[nodes2, nodes2.T] += Ke
 
 
 # In[21]:
 
-F = np.zeros(2*len(nodes))
-free_rows = np.hstack((2*free_nodes_1m, 2*free_nodes_1m + 1))
-F[free_rows] = 9.81*12000/len(nodes)
-F[::2] = 0
-fixed_rows = np.hstack((2*fixed_nodes_1m, 2*fixed_nodes_1m + 1))
-#K[2*fixed_nodes_1m] = 0.0
-#K[2*fixed_nodes_1m + 1] = 0.0
-#K[:, 2*fixed_nodes_1m] = 0.0
-#K[:, 2*fixed_nodes_1m + 1] = 0.0
-#bound = np.hstack((2*fixed_nodes_1m, 2*fixed_nodes_1m + 1))
-#vec = np.outer(np.ones(len(bound), dtype=np.int), bound)
-#K[vec, vec.T] = np.eye(len(bound))
+K_1m = global_stiffness(E, nu, nodes_1m, IEN_1m, fixed_nodes_1m)
+K_0_5m = global_stiffness(E, nu, nodes_0_5m, IEN_0_5m, fixed_nodes_0_5m)
 
-d = np.linalg.solve(K, F.T)
+# In[25]:
 
+F_1m = np.zeros(2*len(nodes_1m))
+free_pos = np.hstack((2*free_nodes_1m, 2*free_nodes_1m + 1))
+F_1m[free_pos] = 9.81*24000/len(nodes_1m)
+F_1m[::2] = 0.0
 
-# In[24]:
+d_1m = np.linalg.solve(K_1m, F_1m.T)
+# In[27]:
 
-fig=pyplot.figure()
-ax=fig.add_subplot(111)
-eps = d.reshape(len(nodes), 2) *2e5
-for e in IEN_1m:
-    coords = np.vstack((nodes_1m[e] + eps[e], nodes_1m[e[0]] + eps[e[0]]))
-    ax.plot(coords[:,0], coords[:,1],'kx-')
-pyplot.xlim(-0.1,4.1)
-pyplot.ylim(-0.1,4.1)
-pyplot.xlabel(r"$x$")
-pyplot.ylabel(r"$y$")
-
+def test_suite():
+    def test_Jacobian():
+        return np.array_equal(Jacobian(np.arange(3)), np.array([2, 1]))
+        
+    def test_C():
+        Ndims = 1
+        C = np.zeros((Ndims,Ndims,Ndims,Ndims))
+        Cfn = generate_constituitive_relation(1e5, 0.3)
+        for i in range(Ndims):
+            for j in range(Ndims):
+                for k in range(Ndims):
+                    for l in range(Ndims):
+                        C[i,j,k,l] = Cfn(i,j,k,l)
+        if abs(C[0,0,0,0] - 134615) < 1:
+            return True
+        else:
+            return False
+    
+    if test_Jacobian():
+        print("Test 1 succcess: The Jacobian function works as expected")
+    if test_C():
+        print("Test 2 success: The contititutive eq. matrix can be created")
 
 # In[ ]:
 
-
-
+if __name__ == "__main__":
+    test_suite()
+    
