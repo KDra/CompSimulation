@@ -210,16 +210,27 @@ def basisO(r, c, alpha, orb=0):
         raise ValueError("Error! The number of orbitals for oxygen must be between 0 and 5")
 
 def coord():
+    """
+    Computes the real coordinates of the orbitals of water and it returns the 
+    values in a 3D matrix where the 0th dimension points to the coordinates for
+    each orbital.
+    """
+    # Produce a grid
     l = np.linspace(-scale, scale, 100)
     x, y = np.meshgrid(l, l)
+    # Compute distances from each atom
     rO = np.sqrt((x-R_O[0])**2 + (y-R_O[1])**2)
     rH1 = np.sqrt((x-R_H1[0])**2 + (y-R_H1[1])**2)
     rH2 = np.sqrt((x-R_H2[0])**2 + (y-R_H2[1])**2)
+    
     chir = np.zeros((7, len(l), len(l)))
+    # Compute gaussians corresponding to oxygen
     for i in np.arange(5):
         chir[i] = basisO(rO, c, alpha, orb=i)
+    # Compute gaussians corresponding to hydrogen
     chir[5] = basisH(rH1, c[0], alpha[0])
     chir[6] = basisH(rH2, c[0], alpha[0])
+    # Transform gaussians to obtain orbitals
     chi = np.zeros_like(chir)
     for i in np.arange(len(C)):
         for j in np.arange(len(C)):
@@ -238,3 +249,20 @@ for i in np.arange(7):
     plt.clabel(mplt, inline=1, fontsize=12, colors='k')
     plt.title(titles[i])
 
+
+def tests():
+    def test_transformMat():
+        I = np.eye(5)
+        if tranformMat(I) == I:
+            return True
+        else:
+            return False
+    def test_denseMat():
+        C = np.ones(5)
+        Nelec = 10
+        if denseMat(C, Nelec) == np.eye(5)*2:
+            return True
+        else:
+            return False
+    def 
+        
