@@ -236,7 +236,7 @@ def coord():
         for j in np.arange(len(C)):
             chi[i] += C[i, j] * chir[j]
     return chi
-
+"""
 r = coord()
 
 titles = ["Oxygen 1s", "Oxygen 2s", "Oxygen 2p (x)", "Oxygen 2p (y)", "Oxygen 2p (z)", "Hydrogen-1 1s", "Hydrogen-2 1s"]
@@ -248,21 +248,39 @@ for i in np.arange(7):
     mplt = plt.contour(r[i], extent=ext, cmap="copper", levels=lvl)
     plt.clabel(mplt, inline=1, fontsize=12, colors='k')
     plt.title(titles[i])
-
+"""
 
 def tests():
     def test_transformMat():
         I = np.eye(5)
-        if tranformMat(I) == I:
+        if np.any(tranformMat(I) == I):
             return True
         else:
             return False
-    def test_denseMat():
-        C = np.ones(5)
-        Nelec = 10
-        if denseMat(C, Nelec) == np.eye(5)*2:
-            return True
-        else:
-            return False
-    def 
         
+    def test_denseMat():
+        C = np.eye(5)
+        C[1, 3] = 1.0
+        D = C.copy()*2
+        D[1, 3] = D[3, 1] = 2.0
+        D[1, 1] = 4.0
+        D[4, 4] = 0.0
+        if np.all(denseMat(np.eye(5), 10) == np.eye(5)*2) and np.all(denseMat(C, 9) == D):
+            return True
+        else:
+            return False
+        
+    def test_fock():
+         a = np.eye(3)
+         g = g=np.array([[a]*3]*3)
+         F = np.array([[ 3.5,  2.5,  2.5],[ 2.5,  3.5,  2.5],[ 2.5,  2.5,  3.5]])
+         if np.all(fock(a, g, a) == F):
+             return True
+         else:
+             return False
+    
+    print("Transformation operation is successful: {}".format(test_transformMat()))
+    print("Density matrix operation is successful: {}".format(test_denseMat()))
+    print("Fock operation is successful: {}".format(test_fock()))
+        
+tests()
